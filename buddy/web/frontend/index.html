@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Focus Buddy</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+  }
+  h1 { font-size: 2.8rem; background: linear-gradient(90deg, #00f260, #0575e6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .subtitle { color: #a0a0c0; margin-bottom: 2rem; }
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 640px;
+    margin-bottom: 1.5rem;
+  }
+  input { width: 100%; padding: 1rem; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.25); color: #fff; font-size: 1rem; margin-bottom: 1rem; }
+  button { width: 100%; padding: 1rem; border: none; border-radius: 14px; font-size: 1.05rem; font-weight: 700; cursor: pointer; }
+  .btn-start { background: linear-gradient(90deg, #00f260, #0575e6); color: #0a0a0a; }
+  .btn-stop { background: linear-gradient(90deg, #ff416c, #ff4b2b); color: #fff; }
+  .btn-secondary { background: rgba(255,255,255,0.08); color: #ccd6f6; margin-top: 0.5rem; font-size: 0.9rem; }
+  #status { text-align: center; color: #00f260; margin-top: 1rem; font-weight: 500; }
+  #permStatus { text-align: center; font-size: 0.8rem; margin-top: 0.5rem; padding: 0.4rem 0.8rem; border-radius: 8px; display: inline-block; }
+  .perm-granted { background: rgba(0,242,96,0.15); color: #00f260; }
+  .perm-denied { background: rgba(255,65,108,0.15); color: #ff416c; }
+  .perm-default { background: rgba(255,193,7,0.15); color: #ffc107; }
+  #log { max-height: 360px; overflow-y: auto; font-family: monospace; font-size: 0.82rem; color: #a8b2d1; background: rgba(0,0,0,0.25); border-radius: 12px; padding: 1rem; margin-top: 1rem; }
+  .log-entry { margin-bottom: 0.6rem; border-left: 3px solid #00f260; padding-left: 0.6rem; }
+  .log-entry.off-track { border-left-color: #ff416c; }
+  .log-entry.notify { border-left-color: #ffd700; }
+  .hidden { display: none !important; }
+  .streak-badge { display: inline-flex; padding: 0.35rem 0.9rem; border-radius: 24px; font-size: 0.85rem; font-weight: 700; }
+  .streak-ok { background: rgba(0,242,96,0.12); color: #00f260; }
+  .streak-warn { background: rgba(255,193,7,0.12); color: #ffc107; }
+  .streak-danger { background: rgba(255,65,108,0.12); color: #ff416c; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+  #flashOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,0,0,0.0); pointer-events: none; z-index: 9999; transition: background 0.1s; }
+  #flashOverlay.active { animation: flashRed 0.5s ease-in-out 3; }
+  @keyframes flashRed { 0%, 100% { background: rgba(255,0,0,0.0); } 50% { background: rgba(255,0,0,0.4); } }
+</style>
+</head>
+<body>
+  <div id="flashOverlay"></div>
+  <h1>Focus Buddy</h1>
+  <p class="subtitle">AI-powered accountability partner. Don't bullshit.</p>
+
+  <div class="card">
+    <input type="text" id="goalInput" placeholder="Session goal (e.g., 'Finish report')" />
+    <button id="startBtn" class="btn-start">Start Session</button>
+    <button id="stopBtn" class="btn-start hidden" style="background:linear-gradient(90deg,#ff416c,#ff4b2b);color:#fff;">Stop Session</button>
+    <div id="status"></div>
+    <div style="text-align:center;"><div id="permStatus" class="perm-default">Notifications: Checking...</div></div>
+    <div class="streak-container hidden" id="streakWrap">
+      <span id="streakBadge" class="streak-badge streak-ok">On Track</span>
+    </div>
+    <button id="testNotifyBtn" class="btn-secondary" onclick="testNotification()">Test Notification</button>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:0.75rem;color:#ccd6f6;">Live Activity Log</h3>
+    <div id="log"></div>
+  </div>
+
+<script>
+  const goalInput = document.getElementById('goalInput');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const statusEl = document.getElementById('status');
+  const logEl = document.getElementById('log');
+  const streakWrap = document.getElementById('streakWrap');
+  const streakBadge = document.getElementById('streakBadge');
+  const permStatus = document.getElementById('permStatus');
+  const flashOverlay = document.getElementById('flashOverlay');
+  let ws = null;
+  let audioCtx = null;
+
+  function speak(text, rate=1.2) {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = rate;
+      u.pitch = 0.9;
+      u.volume = 1.0;
+      window.speechSynthesis.speak(u);
+    }
+  }
+
+  function playBeep(freq=800, duration=0.3, type='square') {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+      osc.stop(audioCtx.currentTime + duration);
+    } catch(e) {}
+  }
+
+  function playAlertSound(severity) {
+    if (severity === 'aggressive') {
+      playBeep(400, 0.4, 'sawtooth');
+      setTimeout(() => playBeep(600, 0.4, 'sawtooth'), 200);
+      setTimeout(() => playBeep(800, 0.6, 'square'), 400);
+    } else if (severity === 'moderate') {
+      playBeep(500, 0.3, 'square');
+      setTimeout(() => playBeep(700, 0.3, 'square'), 150);
+    } else {
+      playBeep(600, 0.2, 'sine');
+    }
+  }
+
+  function updatePermStatus() {
+    if (!('Notification' in window)) {
+      permStatus.textContent = 'Notifications not supported';
+      permStatus.className = 'perm-denied';
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      permStatus.textContent = 'Notifications enabled';
+      permStatus.className = 'perm-granted';
+    } else if (Notification.permission === 'denied') {
+      permStatus.textContent = 'Notifications BLOCKED';
+      permStatus.className = 'perm-denied';
+    } else {
+      permStatus.textContent = 'Click to enable notifications';
+      permStatus.className = 'perm-default';
+      permStatus.style.cursor = 'pointer';
+      permStatus.onclick = async () => {
+        const r = await Notification.requestPermission();
+        updatePermStatus();
+        if (r === 'granted') new Notification('Focus Buddy', { body: 'Ready to hold you accountable.' });
+      };
+    }
+  }
+
+  function testNotification() {
+    if (!('Notification' in window)) { alert('Not supported'); return; }
+    if (Notification.permission !== 'granted') { updatePermStatus(); return; }
+    playAlertSound('aggressive');
+    flashOverlay.classList.add('active');
+    setTimeout(() => flashOverlay.classList.remove('active'), 2000);
+    speak('Testing. If you hear this, voice alerts are working. Now get back to work.');
+    new Notification('TEST', { body: 'Working!', requireInteraction: true, silent: true });
+  }
+
+  function appendLog(msg, type='normal') {
+    const div = document.createElement('div');
+    div.className = 'log-entry' + (type==='off-track' ? ' off-track' : type==='notify' ? ' notify' : '');
+    div.textContent = msg;
+    logEl.prepend(div);
+  }
+
+  function updateStreak(streak, severity) {
+    streakWrap.classList.remove('hidden');
+    if (streak === 0) { streakBadge.textContent = 'On Track'; streakBadge.className = 'streak-badge streak-ok'; }
+    else if (severity === 'aggressive') { streakBadge.textContent = 'OFF-TRACK x' + streak; streakBadge.className = 'streak-badge streak-danger'; }
+    else if (severity === 'moderate') { streakBadge.textContent = 'Off-track x' + streak; streakBadge.className = 'streak-badge streak-warn'; }
+    else { streakBadge.textContent = 'Off-track x' + streak; streakBadge.className = 'streak-badge streak-warn'; }
+  }
+
+  function sendNotify(title, body, severity) {
+    playAlertSound(severity);
+    flashOverlay.classList.add('active');
+    setTimeout(() => flashOverlay.classList.remove('active'), severity === 'aggressive' ? 3000 : 1500);
+    if (navigator.vibrate) navigator.vibrate(severity === 'aggressive' ? [300,100,300,100,500] : [200,100,200]);
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body, requireInteraction: severity === 'aggressive', silent: true });
+      if (severity === 'aggressive') {
+        setTimeout(() => { new Notification(title, { body, requireInteraction: true, silent: true }); playAlertSound('aggressive'); }, 3000);
+      }
+    }
+    if (severity === 'aggressive') speak(title + '. ' + body);
+    else if (severity === 'moderate') speak(body);
+  }
+
+  updatePermStatus();
+
+  startBtn.onclick = () => {
+    const goal = goalInput.value.trim();
+    if (!goal) { alert('Enter a goal!'); return; }
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${window.location.host}/ws`);
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ action: 'start', goal }));
+      startBtn.classList.add('hidden');
+      stopBtn.classList.remove('hidden');
+      statusEl.textContent = 'Session active';
+      logEl.innerHTML = '';
+      appendLog('Session started: ' + goal);
+      playBeep(800, 0.1, 'sine');
+    };
+    ws.onmessage = (ev) => {
+      const d = JSON.parse(ev.data);
+      if (d.type === 'status') statusEl.textContent = d.message;
+      else if (d.type === 'observation') appendLog(`[${d.timestamp.split('T')[1].split('.')[0]}] ${d.description}`);
+      else if (d.type === 'evaluation') {
+        appendLog(`[EVAL] ${d.on_track?'ON':'OFF'} TRACK • ${(d.confidence*100).toFixed(0)}% • ${d.reason}`, d.on_track?'normal':'off-track');
+        updateStreak(d.off_track_streak, d.severity);
+      }
+      else if (d.type === 'notify') { appendLog(`[ALERT] ${d.title}: ${d.body}`, 'notify'); sendNotify(d.title, d.body, d.severity); }
+      else if (d.type === 'summary') {
+        appendLog(`Summary: ${d.summary.focus_score}/10 • ${d.summary.on_track_pct}% • ${d.summary.duration_min}min`);
+      }
+      else if (d.type === 'error') appendLog('[ERR] ' + d.message, 'off-track');
+    };
+    ws.onclose = () => {
+      statusEl.textContent = 'Session ended';
+      startBtn.classList.remove('hidden');
+      stopBtn.classList.add('hidden');
+      streakWrap.classList.add('hidden');
+    };
+  };
+
+  stopBtn.onclick = () => { if (ws) { ws.send(JSON.stringify({ action: 'stop' })); ws.close(); } };
+</script>
+</body>
+</html>

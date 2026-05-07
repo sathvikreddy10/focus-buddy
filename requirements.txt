@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
+mss
+Pillow
+openai
+aiofiles
+websockets
+python-dotenv
+aiohttp
