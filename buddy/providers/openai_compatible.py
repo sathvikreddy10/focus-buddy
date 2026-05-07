@@ -83,6 +83,19 @@ class OpenAICompatibleProvider(Provider):
         except Exception as e:
             return {"on_track": True, "confidence": 0.0, "reason": f"Error: {e}"}
 
+    async def reason_with_prompt(self, prompt: str) -> str:
+        """Send raw prompt to reasoning model, return raw response text."""
+        completion = await self.client.chat.completions.create(
+            model=self.reasoning_model,
+            messages=[
+                {"role": "system", "content": "You are Jarvis. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=300,
+        )
+        return completion.choices[0].message.content.strip()
+
     async def health_check(self) -> dict:
         try:
             models = await self.client.models.list()

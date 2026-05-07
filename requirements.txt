@@ -9,3 +9,4 @@ aiofiles
 websockets
 python-dotenv
 aiohttp
+piper-tts

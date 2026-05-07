@@ -25,6 +25,11 @@ class Provider(ABC):
         ...
 
     @abstractmethod
+    async def reason_with_prompt(self, prompt: str) -> str:
+        """Send a raw prompt to the reasoning model, return raw text response."""
+        ...
+
+    @abstractmethod
     async def health_check(self) -> dict:
         """Check if provider is reachable. Returns {ok: bool, models: list, error: str}."""
         ...

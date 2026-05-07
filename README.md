@@ -1,6 +1,8 @@
 # Focus Buddy
 
-AI-powered accountability partner. It watches your screen, judges your focus, and yells at you when you're bullshitting.
+AI-powered accountability partner. It watches your screen, judges your focus, and **Jarvis** yells at you when you're bullshitting.
+
+> "Hey dude, Twitter again? Third time today. Your average focus score is 6.5 and you're currently at a 2. What are we doing?"
 
 ---
 
@@ -36,10 +38,52 @@ Open `http://localhost:8765` in your browser. Enter a goal, click **Start Sessio
 ### CLI Mode
 
 ```bash
+# Silent mode
 python -m buddy start --goal "Finish the report"
+
+# With Jarvis voice (Piper TTS)
+python -m buddy start --goal "Finish the report" --voice
 ```
 
 Press `Ctrl+C` to stop.
+
+---
+
+## Meet Jarvis
+
+Jarvis isn't a generic evaluator. He's your accountability buddy who **learns your patterns** and **talks to you like a real person**.
+
+### What Jarvis Knows
+
+From your last 15 sessions, Jarvis builds a profile:
+- What you usually get distracted by (Twitter, YouTube, games, etc.)
+- Your best/worst focus hours
+- Your average focus score
+- How long you typically last before drifting
+- Whether you respond better to encouragement or roasting
+
+### Jarvis Speaks
+
+- **Local Piper TTS** — runs entirely on your machine, no API calls, no MP3 files
+- Natural voice that sounds human, not robotic
+- Different tones based on severity:
+  - Friendly: calm, supportive
+  - Concerned: "Dude, you ok?"
+  - Firm: "Come on, focus up"
+  - Savage: "Bro. Seriously? Again?"
+
+### Proactive Messages
+
+Even when you're on track, Jarvis checks in:
+- "You've been solid for 20 minutes — that's above your average!"
+- "It's 2pm, you usually drift now. Stay focused."
+- "Halfway to your average session length, nice!"
+
+### No Popups, No Files
+
+- Audio plays via **Web Audio API** in browser (no downloads)
+- CLI uses **winsound** from memory buffers (no temp files)
+- Zero MP3s, zero file dialogs, zero OS notification sounds
 
 ---
 
@@ -147,6 +191,12 @@ python -m buddy start --goal "Finish report"
 # Start with specific provider
 python -m buddy start --goal "Finish report" --provider lmstudio
 
+# Start with Jarvis voice (speaks aloud)
+python -m buddy start --goal "Finish report" --voice
+
+# Combine: specific provider + voice
+python -m buddy start --goal "Finish report" --provider lmstudio --voice
+
 # Stop session
 python -m buddy stop
 
@@ -207,11 +257,20 @@ python -m buddy web --host 127.0.0.1 --port 8080
 
 | Level | Trigger | What Happens |
 |-------|---------|--------------|
-| **Gentle** | 1st off-track eval | Soft beep + browser notification |
-| **Moderate** | 2nd off-track eval | Louder beeps + TTS speaks the reason |
-| **Aggressive** | 3rd+ off-track eval | Alarm sound + red screen flash + TTS yells + repeat notification every 3s |
+| **Gentle** | 1st off-track eval | Soft beep + Jarvis notification bubble + voice |
+| **Moderate** | 2nd off-track eval | Louder beeps + red flash + Jarvis speaks with concern |
+| **Aggressive** | 3rd+ off-track eval | Alarm sound + red screen flash + Jarvis **roasts you using your history** + repeat every 3s |
+| **Proactive** | Every ~3 min on-track | Jarvis encourages you, references your progress vs average |
 
 **Note**: No full-screen blocking. Your screen stays usable.
+
+### Jarvis Message Examples
+
+Based on your actual history:
+- "Nice dude, you've been solid for 25 minutes — that's 5 above your average!"
+- "Twitter again? Third time today. Your goal was 'finish the report', remember?"
+- "It's 2:15pm, you usually drift around now. Stay with it."
+- "Bro. Seriously? You said you'd stop browsing at 2pm. It's 2:30."
 
 ---
 

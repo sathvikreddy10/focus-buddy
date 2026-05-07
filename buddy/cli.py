@@ -31,6 +31,7 @@ from . import config
 from .providers import registry
 from .core.session import session
 from .core.evaluator import capture_loop
+from .core.voice import get_voice
 
 
 def _provider_list(args):
@@ -131,12 +132,35 @@ def _start(args):
         session.log_file = log_dir / f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
         session.write_log({"event": "start", "goal": args.goal, "timestamp": datetime.now().isoformat()})
 
+        session.voice_enabled = args.voice
+
         print(f"Session started: {args.goal}")
         print(f"Provider: {provider.get_name()}")
         print(f"Capturing every {session.capture_interval}s...")
+        if args.voice:
+            print("Voice: Jarvis will speak aloud")
         print("Press Ctrl+C to stop")
 
         session.capture_task = asyncio.create_task(capture_loop())
+
+        # Voice player loop for CLI
+        if args.voice:
+            voice = get_voice()
+            async def voice_loop():
+                while session.running:
+                    await asyncio.sleep(1)
+                    # Check latest evaluation for voice
+                    if session.evaluations:
+                        latest = session.evaluations[-1]
+                        msg = latest.get("jarvis_message", "")
+                        if msg and getattr(session, '_last_spoken', "") != msg:
+                            session._last_spoken = msg
+                            try:
+                                voice.play(msg)
+                            except Exception as e:
+                                print(f"[Voice error: {e}]")
+            asyncio.create_task(voice_loop())
+
         try:
             await session.capture_task
         except asyncio.CancelledError:
@@ -262,6 +286,7 @@ def main():
     start_parser = subparsers.add_parser("start", help="Start a focus session")
     start_parser.add_argument("--goal", "-g", required=True, help="Session goal")
     start_parser.add_argument("--provider", "-p", help="Override provider")
+    start_parser.add_argument("--voice", "-v", action="store_true", help="Enable Jarvis voice (Piper TTS)")
     start_parser.set_defaults(func=_start)
 
     # stop

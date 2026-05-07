@@ -41,6 +41,7 @@
   .log-entry { margin-bottom: 0.6rem; border-left: 3px solid #00f260; padding-left: 0.6rem; }
   .log-entry.off-track { border-left-color: #ff416c; }
   .log-entry.notify { border-left-color: #ffd700; }
+  .log-entry.jarvis { border-left-color: #00d4ff; background: rgba(0,212,255,0.05); }
   .hidden { display: none !important; }
   .streak-badge { display: inline-flex; padding: 0.35rem 0.9rem; border-radius: 24px; font-size: 0.85rem; font-weight: 700; }
   .streak-ok { background: rgba(0,242,96,0.12); color: #00f260; }
@@ -50,12 +51,43 @@
   #flashOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,0,0,0.0); pointer-events: none; z-index: 9999; transition: background 0.1s; }
   #flashOverlay.active { animation: flashRed 0.5s ease-in-out 3; }
   @keyframes flashRed { 0%, 100% { background: rgba(255,0,0,0.0); } 50% { background: rgba(255,0,0,0.4); } }
+  /* Jarvis speech bubble */
+  #jarvisBubble {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: rgba(0, 20, 40, 0.95);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 16px;
+    padding: 1rem 1.5rem;
+    max-width: 320px;
+    font-size: 0.95rem;
+    color: #e0f0ff;
+    z-index: 1000;
+    transform: translateY(150%);
+    transition: transform 0.4s ease;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  #jarvisBubble.show { transform: translateY(0); }
+  #jarvisBubble .jarvis-label {
+    font-size: 0.75rem;
+    color: #00d4ff;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
 </style>
 </head>
 <body>
   <div id="flashOverlay"></div>
+  <div id="jarvisBubble">
+    <div class="jarvis-label">Jarvis</div>
+    <div id="jarvisText">Hey dude, ready to focus?</div>
+  </div>
+
   <h1>Focus Buddy</h1>
-  <p class="subtitle">AI-powered accountability partner. Don't bullshit.</p>
+  <p class="subtitle">Jarvis is watching. Don't bullshit.</p>
 
   <div class="card">
     <input type="text" id="goalInput" placeholder="Session goal (e.g., 'Finish report')" />
@@ -84,18 +116,34 @@
   const streakBadge = document.getElementById('streakBadge');
   const permStatus = document.getElementById('permStatus');
   const flashOverlay = document.getElementById('flashOverlay');
+  const jarvisBubble = document.getElementById('jarvisBubble');
+  const jarvisText = document.getElementById('jarvisText');
   let ws = null;
   let audioCtx = null;
+  let jarvisTimer = null;
 
-  function speak(text, rate=1.2) {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = rate;
-      u.pitch = 0.9;
-      u.volume = 1.0;
-      window.speechSynthesis.speak(u);
+  // Play base64 WAV audio via Web Audio API (no files, no popups)
+  async function playJarvisAudio(base64Wav) {
+    if (!base64Wav) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const wavBytes = Uint8Array.from(atob(base64Wav), c => c.charCodeAt(0));
+      const arrayBuffer = wavBytes.buffer;
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioCtx.destination);
+      source.start();
+    } catch(e) {
+      console.error('Audio playback error:', e);
     }
+  }
+
+  function showJarvis(text, duration=4000) {
+    jarvisText.textContent = text;
+    jarvisBubble.classList.add('show');
+    if (jarvisTimer) clearTimeout(jarvisTimer);
+    jarvisTimer = setTimeout(() => jarvisBubble.classList.remove('show'), duration);
   }
 
   function playBeep(freq=800, duration=0.3, type='square') {
@@ -156,13 +204,13 @@
     playAlertSound('aggressive');
     flashOverlay.classList.add('active');
     setTimeout(() => flashOverlay.classList.remove('active'), 2000);
-    speak('Testing. If you hear this, voice alerts are working. Now get back to work.');
+    showJarvis("Testing. If you hear this, Jarvis is working. Now get back to work.");
     new Notification('TEST', { body: 'Working!', requireInteraction: true, silent: true });
   }
 
   function appendLog(msg, type='normal') {
     const div = document.createElement('div');
-    div.className = 'log-entry' + (type==='off-track' ? ' off-track' : type==='notify' ? ' notify' : '');
+    div.className = 'log-entry' + (type==='off-track' ? ' off-track' : type==='notify' ? ' notify' : type==='jarvis' ? ' jarvis' : '');
     div.textContent = msg;
     logEl.prepend(div);
   }
@@ -175,7 +223,7 @@
     else { streakBadge.textContent = 'Off-track x' + streak; streakBadge.className = 'streak-badge streak-warn'; }
   }
 
-  function sendNotify(title, body, severity) {
+  function sendNotify(title, body, severity, audioB64) {
     playAlertSound(severity);
     flashOverlay.classList.add('active');
     setTimeout(() => flashOverlay.classList.remove('active'), severity === 'aggressive' ? 3000 : 1500);
@@ -186,8 +234,7 @@
         setTimeout(() => { new Notification(title, { body, requireInteraction: true, silent: true }); playAlertSound('aggressive'); }, 3000);
       }
     }
-    if (severity === 'aggressive') speak(title + '. ' + body);
-    else if (severity === 'moderate') speak(body);
+    if (audioB64) playJarvisAudio(audioB64);
   }
 
   updatePermStatus();
@@ -204,6 +251,7 @@
       statusEl.textContent = 'Session active';
       logEl.innerHTML = '';
       appendLog('Session started: ' + goal);
+      showJarvis("Hey dude, let's get to work. I'm watching.");
       playBeep(800, 0.1, 'sine');
     };
     ws.onmessage = (ev) => {
@@ -213,8 +261,16 @@
       else if (d.type === 'evaluation') {
         appendLog(`[EVAL] ${d.on_track?'ON':'OFF'} TRACK • ${(d.confidence*100).toFixed(0)}% • ${d.reason}`, d.on_track?'normal':'off-track');
         updateStreak(d.off_track_streak, d.severity);
+        if (d.jarvis_message) {
+          showJarvis(d.jarvis_message);
+          if (d.audio) playJarvisAudio(d.audio);
+        }
       }
-      else if (d.type === 'notify') { appendLog(`[ALERT] ${d.title}: ${d.body}`, 'notify'); sendNotify(d.title, d.body, d.severity); }
+      else if (d.type === 'notify') {
+        appendLog(`[JARVIS] ${d.body}`, d.proactive ? 'jarvis' : 'notify');
+        showJarvis(d.body);
+        sendNotify(d.title, d.body, d.severity, d.audio);
+      }
       else if (d.type === 'summary') {
         appendLog(`Summary: ${d.summary.focus_score}/10 • ${d.summary.on_track_pct}% • ${d.summary.duration_min}min`);
       }
@@ -225,6 +281,7 @@
       startBtn.classList.remove('hidden');
       stopBtn.classList.add('hidden');
       streakWrap.classList.add('hidden');
+      jarvisBubble.classList.remove('show');
     };
   };
 

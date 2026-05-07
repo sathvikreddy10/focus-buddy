@@ -29,6 +29,8 @@ class SessionState:
         self.provider = None
         self.capture_interval: int = 15
         self.eval_interval: int = 4
+        self.voice_enabled: bool = False
+        self._last_spoken: str = ""
 
     async def broadcast(self, msg: dict):
         """Send message to all connected WebSocket clients."""

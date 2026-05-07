@@ -79,6 +79,22 @@ class OllamaProvider(Provider):
         except Exception as e:
             return {"on_track": True, "confidence": 0.0, "reason": f"Error: {e}"}
 
+    async def reason_with_prompt(self, prompt: str) -> str:
+        """Send raw prompt to reasoning model via Ollama."""
+        payload = {
+            "model": self.reasoning_model,
+            "messages": [
+                {"role": "system", "content": "You are Jarvis. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            "stream": False,
+            "options": {"temperature": 0.7}
+        }
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
+            async with session.post(f"{self.base_url}/api/chat", json=payload) as resp:
+                data = await resp.json()
+                return data.get("message", {}).get("content", "").strip()
+
     async def health_check(self) -> dict:
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
