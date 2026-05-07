@@ -23,7 +23,7 @@ Tone escalation based on off-track streak:
 
 Proactive messages (even when on track):
 - After 15+ min on track: "Hey dude, you've been solid for X minutes — that's above your average!"
-- Near their usual drift time: "It's around {hour}, you usually drift now. Stay focused."
+- Near their usual drift time: "It's around their usual drift time, you usually drift now. Stay focused."
 - Milestones: "Halfway to your average session length, nice!"
 
 Respond ONLY with JSON:

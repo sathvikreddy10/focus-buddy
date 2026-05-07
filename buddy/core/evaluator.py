@@ -180,13 +180,66 @@ async def check_proactive():
 
 async def _call_jarvis(prompt: str) -> dict:
     """Call reasoning model with Jarvis prompt."""
-    content = await session.provider.reason_with_prompt(prompt)
-    match = re.search(r'\{.*\}', content, re.DOTALL)
-    if match:
-        return json.loads(match.group())
-    return {"on_track": True, "confidence": 0.5, "reason": "parse error",
-            "jarvis_message": "My brain glitched, dude.", "tone": "friendly",
-            "proactive": False, "references_history": False}
+    try:
+        content = await session.provider.reason_with_prompt(prompt)
+    except Exception as e:
+        error_msg = f"Jarvis API error: {e}"
+        print(f"[ERROR] {error_msg}")
+        await session.broadcast({"type": "error", "message": error_msg})
+        # FALLBACK: use keyword-based detection instead of failing silently
+        return _fallback_evaluate()
+
+    try:
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except Exception as e:
+        error_msg = f"Jarvis JSON parse error: {e}"
+        print(f"[ERROR] {error_msg}")
+        await session.broadcast({"type": "error", "message": error_msg})
+
+    return _fallback_evaluate()
+
+
+def _fallback_evaluate() -> dict:
+    """Keyword-based fallback when API fails. Checks observations for distraction keywords."""
+    distraction_keywords = [
+        "twitter", "youtube", "discord", "reddit", "instagram", "tiktok",
+        "facebook", "netflix", "game", "gaming", "minecraft", "steam",
+        "chat", "messaging", "slack", "whatsapp", "telegram",
+        "browser", "browsing", "scrolling", "feed", "news",
+        "music", "spotify", "video", "stream"
+    ]
+    
+    recent_obs = list(session.observations)[-4:]
+    if not recent_obs:
+        return {"on_track": True, "confidence": 0.5, "reason": "no data",
+                "jarvis_message": "Can't see what you're doing, dude.", "tone": "friendly",
+                "proactive": False, "references_history": False}
+    
+    # Count distractions in recent observations
+    distraction_count = 0
+    for obs in recent_obs:
+        desc = obs.get("description", "").lower()
+        for kw in distraction_keywords:
+            if kw in desc:
+                distraction_count += 1
+                break
+    
+    off_ratio = distraction_count / len(recent_obs)
+    
+    if off_ratio >= 0.5:
+        return {"on_track": False, "confidence": 0.8, "reason": f"Detected distractions in {distraction_count}/{len(recent_obs)} recent observations",
+                "jarvis_message": f"Dude, you're clearly off-track. I see {distraction_count} distractions in the last few checks. Get back to {session.goal}.",
+                "tone": "firm", "proactive": False, "references_history": False}
+    elif off_ratio > 0:
+        return {"on_track": True, "confidence": 0.6, "reason": "Some distractions detected but not dominant",
+                "jarvis_message": f"You're mostly on track, but I caught some distractions. Stay focused on {session.goal}.",
+                "tone": "concerned", "proactive": False, "references_history": False}
+    else:
+        return {"on_track": True, "confidence": 0.9, "reason": "No distractions detected",
+                "jarvis_message": f"Nice, you're locked in on {session.goal}. Keep it up, dude!",
+                "tone": "friendly", "proactive": False, "references_history": False}
 
 
 def _get_severity(streak: int, tone: str, proactive: bool) -> str:

@@ -93,6 +93,7 @@ class OpenAICompatibleProvider(Provider):
             ],
             temperature=0.7,
             max_tokens=300,
+            timeout=60,
         )
         return completion.choices[0].message.content.strip()
 

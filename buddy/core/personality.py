@@ -31,19 +31,12 @@ class UserProfile:
     def to_prompt_context(self) -> str:
         """Format profile for injection into LLM prompt."""
         lines = [
-            f"What you know about {self.name}:",
-            f"- They've had {self.session_count} focus sessions with you",
-            f"- They usually get distracted by: {', '.join(self.common_distractions[:5]) if self.common_distractions else 'various things'}",
-            f"- Their best focus time is: {', '.join(self.best_focus_hours) if self.best_focus_hours else 'unknown'}",
-            f"- Their average focus score: {self.avg_focus_score:.1f}/10",
-            f"- Average session length: {self.avg_session_min:.0f} minutes",
-            f"- Common goals: {self.most_common_goal if self.most_common_goal else 'various'}",
-            f"- Pattern: {self.distraction_pattern if self.distraction_pattern else 'still learning'}",
-            f"- When you use '{self.effective_tone}' tone, they respond best",
+            f"Profile: {self.session_count} sessions, avg score {self.avg_focus_score:.1f}/10, avg length {self.avg_session_min:.0f}min.",
+            f"Distractions: {', '.join(self.common_distractions[:3]) if self.common_distractions else 'various'}.",
+            f"Pattern: {self.distraction_pattern if self.distraction_pattern else 'still learning'}.",
+            f"Tone that works: {self.effective_tone}.",
         ]
-        if self.roast_hits:
-            lines.append(f"- Past callouts that worked: {', '.join(self.roast_hits[:3])}")
-        return "\n".join(lines)
+        return " ".join(lines)
 
 
 def _extract_distractions(observations: list[dict]) -> list[str]:
